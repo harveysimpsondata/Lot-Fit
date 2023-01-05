@@ -12,7 +12,7 @@
 
 - After which the python file 'LOT FIT STEP 2.py' would run.  The client would give us certain building designs that they wanted to use for each subdivision so I could fill in the list within 'LOT FIT STEP 2.py'. This list hides every column that is not within the list. There is also an option for Side = True/False. This option would show the building designs with side garages if True and hide the columns if False.
 
-### Cost
+### Savings
 - Usually this would take about 3 employees at least 3 days per job.
 - With my system implemented it would take me at most 1.5 days per job.
 - Ultimately it would save the company $5000-$7500 per job.
