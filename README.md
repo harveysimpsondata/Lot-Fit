@@ -1,6 +1,6 @@
-### Lot Fit Matrix
+## Lot Fit Matrix
 
-## Problem
+### Problem
 - dbt run
 - dbt test
 
