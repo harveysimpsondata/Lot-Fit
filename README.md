@@ -1,6 +1,4 @@
-Welcome to your new dbt project!
-
-### Using the starter project
+### Lot Fit Matrix
 
 Try running the following commands:
 - dbt run
