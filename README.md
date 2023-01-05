@@ -1,6 +1,6 @@
 ### Lot Fit Matrix
 
-Try running the following commands:
+## Problem
 - dbt run
 - dbt test
 
