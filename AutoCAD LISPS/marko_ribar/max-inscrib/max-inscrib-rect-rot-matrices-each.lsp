@@ -1,0 +1,325 @@
+(defun c:max-inscrib-rect-rot-matrices-each ( / UCS2WCSMatrix WCS2UCSMatrix LM:Inside-p LWPoly Group3 groupbetweennils ss el ucsf n m da k minp maxp ul ur ll lr dx dy r c p row mat matl ar pr pt prpos ptpos armat rownilpos p1 p2 p3 p4 q rec pl )
+
+  (vl-load-com)
+
+  ;; Doug C. Broad, Jr.
+  ;; can be used with vla-transformby to
+  ;; transform objects from the UCS to the WCS
+  (defun UCS2WCSMatrix ()
+    (vlax-tmatrix
+      (append
+        (mapcar
+         '(lambda (vector origin)
+          (append (trans vector 1 0 t) (list origin))
+        )
+        (list '(1 0 0) '(0 1 0) '(0 0 1))
+        (trans '(0 0 0) 0 1)
+        )
+        (list '(0 0 0 1))
+      )
+    )
+  )
+  ;; transform objects from the WCS to the UCS
+  (defun WCS2UCSMatrix ()
+    (vlax-tmatrix
+      (append
+        (mapcar
+         '(lambda (vector origin)
+          (append (trans vector 0 1 t) (list origin))
+        )
+        (list '(1 0 0) '(0 1 0) '(0 0 1))
+        (trans '(0 0 0) 1 0)
+        )
+        (list '(0 0 0 1))
+      )
+    )
+  )
+
+  ; Lee Mac Point Inside Curve
+  (defun LM:Inside-p ( pt ent / unit v^v _GroupByNum fd1 fd2 par lst nrm obj tmp )
+
+    (vl-load-com)
+
+    (defun unit ( v / d )
+      (if (not (equal (setq d (distance '(0.0 0.0 0.0) v)) 0.0 1e-8))
+        (mapcar '(lambda ( x ) (/ x d)) v)
+      )
+    )
+
+    (defun v^v ( u v )
+      (list
+        (- (* (cadr u) (caddr v)) (* (caddr u) (cadr v)))
+        (- (* (caddr u) (car v)) (* (car u) (caddr v)))
+        (- (* (car u) (cadr v)) (* (cadr u) (car v)))
+      )
+    )
+
+    (defun _GroupByNum ( l n / r )
+      (if l
+        (cons (reverse (repeat n (setq r (cons (car l) r) l (cdr l)) r)) (_GroupByNum l n))
+      )
+    )
+
+    (if (= (type ent) 'VLA-OBJECT)
+      (setq obj ent
+            ent (vlax-vla-object->ename ent))
+      (setq obj (vlax-ename->vla-object ent))
+    )
+
+    (if (vlax-curve-isplanar ent)
+      (progn
+        (setq fd1 (vlax-curve-getfirstderiv ent (setq par (vlax-curve-getstartparam ent))))
+        (while (equal fd1 (setq fd2 (vlax-curve-getfirstderiv ent (setq par (+ par 0.001)))) 1e-3))
+        (setq nrm (unit (v^v fd1 fd2)))
+        (setq lst
+          (_GroupByNum
+            (vlax-invoke
+              (setq tmp
+                (vlax-ename->vla-object
+                  (entmakex
+                    (list
+                      (cons 0 "RAY")
+                      (cons 100 "AcDbEntity")
+                      (cons 100 "AcDbRay")
+                      (cons 10 pt)
+                      (cons 11 (trans '(1. 0. 0.) nrm 0))
+                    )
+                  )
+                )
+              )
+              'IntersectWith obj acextendnone
+            ) 3
+          )
+        )
+        (vla-delete tmp)
+        ;; gile:
+        (or ;; mod M.R. inside and on curve
+          (vlax-curve-getparamatpoint ent pt) ;; mod M.R. inside and on curve
+          (and
+            lst
+            (not (vlax-curve-getparamatpoint ent pt))
+            (= 1 (rem (length (vl-remove-if (function (lambda ( p / pa p- p+ p0 )
+                                                        (setq pa (vlax-curve-getparamatpoint ent p))
+                                                        (and (setq p- (cond ((setq p- (vlax-curve-getPointatParam ent (- pa 1e-8)))
+                                                                             (trans p- 0 nrm)
+                                                                            )
+                                                                            ((trans (vlax-curve-getPointatParam ent (- (vlax-curve-getEndParam ent) 1e-8)) 0 nrm)
+                                                                            )
+                                                                      )
+                                                             )
+                                                             (setq p+ (cond ((setq p+ (vlax-curve-getPointatParam ent (+ pa 1e-8)))
+                                                                             (trans p+ 0 nrm)
+                                                                            )
+                                                                            ((trans (vlax-curve-getPointatParam ent (+ (vlax-curve-getStartParam ent) 1e-8)) 0 nrm)
+                                                                            )
+                                                                      )
+                                                             )
+                                                             (setq p0 (trans pt 0 nrm))
+                                                             (<= 0 (* (sin (angle p0 p-)) (sin (angle p0 p+)))) ;; LM Mod
+                                                        )
+                                                      )
+                                            ) lst
+                              )
+                      ) 2
+                 )
+            )
+          )
+        )
+      )
+      (prompt "\nReference curve isn't planar...")
+    )
+  )
+
+  (defun LWPoly ( lst )
+    (entmakex
+      (append
+        (list (cons 0 "LWPOLYLINE")
+              (cons 100 "AcDbEntity")
+              (cons 100 "AcDbPolyline")
+              (cons 90 (length lst))
+              (cons 70 (1+ (* (getvar 'plinegen) 128)))
+        )
+        (mapcar (function (lambda ( p ) (cons 10 p))) lst)
+        (list (list 210 0.0 0.0 1.0))
+      )
+    )
+  )
+
+  (defun Group3 ( l / p pl )
+    (repeat (/ (length l) 3)
+      (setq p (list (car l) (cadr l) (caddr l)))
+      (setq l (cdddr l))
+      (setq pl (cons p pl))
+    )
+    (reverse pl)
+  )
+
+  (defun groupbetweennils ( l / a g gg )
+    (repeat (length l)
+      (setq a (car l))
+      (setq l (cdr l))
+      (if (not (null a))
+        (setq g (cons a g))
+        (if g
+          (setq gg (cons (reverse g) gg) g nil)
+        )
+      )
+    )
+    (if (not gg)
+      (list (reverse g))
+      (reverse gg)
+    )
+  )
+
+  (while
+    (or
+      (prompt "\nSelect closed curves on unlocked layer that lie in WCS...")
+      (not (setq ss (ssget "_:L" '((0 . "*POLYLINE,SPLINE,CIRCLE,ELLIPSE")))))
+      (if ss
+        (vl-some '(lambda ( x ) (not (vlax-curve-isclosed x))) (setq el (vl-remove-if 'listp (mapcar 'cadr (ssnamex ss)))))
+      )
+    )
+    (prompt "\nSome of selected curves not closed...")
+  )
+  (initget 6)
+  (setq n (getint "\nSpecify nxn matrix for calculation n= <30> : "))
+  (if (null n)
+    (setq n 30)
+  )
+  (while (= n 1)
+    (prompt "\nSpecified number must be greater than 1...")
+    (initget 6)
+    (setq n (getint "\nSpecify nxn matrix for calculation n= <30> : "))
+    (if (null n)
+      (setq n 30)
+    )
+  )
+  (initget 6)
+  (setq m (getint "\nSpecify rotational 90 degree division m= <60> : "))
+  (if (null m)
+    (setq m 60)
+  )
+  (while (= m 1)
+    (prompt "\nSpecified number must be greater than 1...")
+    (initget 6)
+    (setq m (getint "\nSpecify rotational 90 degree division m= <60> : "))
+    (if (null m)
+      (setq m 60)
+    )
+  )
+  (if (= 0 (getvar 'worlducs))
+    (progn
+      (vl-cmdf "_.UCS" "_W")
+      (setq ucsf t)
+    )
+  )
+  (foreach cur el
+    (setq da (/ 90.0 m))
+    (setq k -1)
+    (repeat m
+      (setq k (1+ k))
+      (if (zerop (* k da))
+        (progn
+          (vla-getboundingbox (vlax-ename->vla-object cur) 'minp 'maxp)
+          (mapcar 'set '(minp maxp) (mapcar 'safearray-value (list minp maxp)))
+          (setq ul (list (car minp) (cadr maxp)) lr (list (car maxp) (cadr minp)))
+          (setq dx (/ (distance ul maxp) n) dy (/ (distance ul minp) n))
+          (setq r -1)
+          (repeat (1+ n)
+            (setq r (1+ r) c -1)
+            (repeat (1+ n)
+              (setq c (1+ c))
+              (setq p (mapcar '+ ul (list (* c dx) (- (* r dy)))))
+              (setq row (cons p row))
+            )
+            (setq row (reverse row))
+            (setq mat (cons row mat))
+            (setq row nil)
+          )
+          (setq mat (reverse mat))
+          (setq mat (mapcar '(lambda ( r ) (mapcar '(lambda ( p ) (if (LM:inside-p p cur) p)) r)) mat))
+          (setq matl (cons mat matl))
+          (setq mat nil)
+        )
+        (progn
+          (vl-cmdf "_.UCS" "_Z" (* k da))
+          (vla-transformby (vlax-ename->vla-object cur) (UCS2WCSMatrix))
+          (vla-getboundingbox (vlax-ename->vla-object cur) 'minp 'maxp)
+          (mapcar 'set '(minp maxp) (mapcar 'safearray-value (list minp maxp)))
+          (vla-transformby (vlax-ename->vla-object cur) (WCS2UCSMatrix))
+          (setq ul (list (car minp) (cadr maxp)) lr (list (car maxp) (cadr minp)))
+          (setq dx (/ (distance ul maxp) n) dy (/ (distance ul minp) n))
+          (setq r -1)
+          (repeat (1+ n)
+            (setq r (1+ r) c -1)
+            (repeat (1+ n)
+              (setq c (1+ c))
+              (setq p (mapcar '+ ul (list (* c dx) (- (* r dy)))))
+              (setq p (trans p 1 0))
+              (setq row (cons p row))
+            )
+            (setq row (reverse row))
+            (setq mat (cons row mat))
+            (setq row nil)
+          )
+          (setq mat (reverse mat))
+          (setq mat (mapcar '(lambda ( r ) (mapcar '(lambda ( p ) (if (LM:inside-p p cur) p)) r)) mat))
+          (setq matl (cons mat matl))
+          (setq mat nil)
+          (vl-cmdf "_.UCS" "_P")
+        )
+      )
+    )
+    (setq matl (reverse matl))
+    (setq ar 0.0)
+    (foreach mat matl
+      (foreach row mat
+        (if (not (vl-every 'null row))
+          (foreach g (groupbetweennils row)
+            (setq pr (car g))
+            (setq pt (last g))
+            (setq prpos (vl-position pr row))
+            (setq ptpos (vl-position pt row))
+            (if pr
+              (progn
+                (setq armat (mapcar '(lambda ( r ) (setq q -1) (vl-remove-if '(lambda ( x ) (or (< (setq q (1+ q)) prpos) (> q ptpos))) r)) mat))
+                (setq rownilpos (vl-position (vl-some '(lambda ( r ) (if (vl-some '(lambda ( x ) (null x)) r) r)) (member (nth (vl-position row mat) armat) armat)) (member (nth (vl-position row mat) armat) armat)))
+                (if rownilpos
+                  (setq q -1 armat (vl-remove-if '(lambda ( r ) (>= (setq q (1+ q)) (+ rownilpos (vl-position row mat)))) armat))
+                )
+                (setq rownilpos (vl-position (vl-some '(lambda ( r ) (if (vl-some '(lambda ( x ) (null x)) r) r)) (reverse armat)) (reverse armat)))
+                (if rownilpos
+                  (setq q -1 armat (reverse (vl-remove-if '(lambda ( r ) (>= (setq q (1+ q)) rownilpos)) (reverse armat))))
+                )
+                (setq ul (caar armat) ur (last (car armat)) ll (car (last armat)) lr (last (last armat)))
+                (if (= (length ul) 2)
+                  (mapcar 'set '(ul ur ll lr) (list (list (car ul) (cadr ul) 0.0) (list (car ur) (cadr ur) 0.0) (list (car ll) (cadr ll) 0.0) (list (car lr) (cadr lr) 0.0)))
+                )
+                (if (> (* (distance ul ll) (distance ul ur)) ar)
+                  (progn
+                    (setq rec (LWPoly (list ll lr ur ul)))
+                    (setq pl (Group3 (vlax-invoke (vlax-ename->vla-object cur) 'intersectwith (vlax-ename->vla-object rec) acextendnone)))
+                    (foreach p (list ll lr ur ul)
+                      (setq pl (vl-remove-if '(lambda ( x ) (equal x p 1e-6)) pl))
+                    )
+                    (if (or (null pl) (and pl (vl-every '(lambda ( x ) (null (or (LM:Inside-p (vlax-curve-getpointatparam cur (+ (vlax-curve-getparamatpoint cur x) 1e-8)) rec) (LM:Inside-p (vlax-curve-getpointatparam cur (- (vlax-curve-getparamatpoint cur x) 1e-8)) rec)))) pl)))
+                      (setq ar (* (distance ul ll) (distance ul ur)) p1 ul p2 ur p3 ll p4 lr)
+                    )
+                    (entdel rec)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (setq rec (LWPoly (list p3 p4 p2 p1)))
+    (entupd (cdr (assoc -1 (entmod (append (entget rec) (list '(62 . 6)))))))
+    (setq matl nil)
+  )
+  (if ucsf
+    (vl-cmdf "_.UCS" "_P")
+  )
+  (princ)
+)
