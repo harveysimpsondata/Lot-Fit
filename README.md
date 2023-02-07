@@ -10,7 +10,5 @@
 
 - The python file 'LOT FIT STEP 2.py' was then run, and the client's desired building designs were entered into the list within the script.  This list would hide all columns that were not within the list, and the option for "Side = True/False" would display building designs with side garages if True, or hide the columns if False.
 
-- After which the python file 'LOT FIT STEP 2.py' would run.  The client would give us certain building designs that they wanted to use for each subdivision so I could fill in the list within 'LOT FIT STEP 2.py'.  This list hides every column that is not within the list.  There is also an option for Side = True/False.  This option would show the building designs with side garages if True and hide the columns if False.
-
 ## Savings
 - The manual process of performing lot fits previously took 3 employees 3-4 days per job. With my system in place, it reduced the time to 1.5 days per job and saved the company approximately $8000-$10000 per job.
